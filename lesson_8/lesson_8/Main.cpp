@@ -1,10 +1,19 @@
 #include "stdafx.h"
 
+typedef std::chrono::high_resolution_clock::time_point TimeVar;
+#define duration(a) std::chrono::duration_cast<std::chrono::seconds>(a).count()
+#define timeNow() std::chrono::high_resolution_clock::now()
+template<typename F, typename... Args>
+int funcTime(F func, Args&&... args)
+{
+	TimeVar t1 = timeNow();
+	func(std::forward<Args>(args)...);
+	return duration(timeNow() - t1);
+}
 using namespace std;
 using namespace std::chrono;
-recursive_mutex globalMutex1;
-mutex globalMutex2;
-struct T
+mutex globalMutex1;
+struct NextValue
 {
 	int input;
 	long double output;
@@ -14,39 +23,17 @@ unsigned int CurrentTask = 0;
 vector <int> input_numbers;
 vector <long double> output_numbers;
 long double fibb(int n);
-T NextTask();
+NextValue NextTask();
 void MultiTread();
-void WriteResult(T task);
+void WriteResult(NextValue task);
+void OneProcessFibonacce(unsigned int BeginValue, unsigned int EndValue);
+void MultiThreadFibonacce();
 
 int main()
 {
-	high_resolution_clock::time_point t1 = high_resolution_clock::now();
-	input_numbers.reserve(10);
-	for (int i = 0; i < 10; ++i)
-	{
-		input_numbers.push_back(i+30);
-	}
-	output_numbers.resize(10);
-	size_t coreCount = thread::hardware_concurrency();
-	std::vector<thread*> threads;
-	for (size_t i = 0; i < coreCount; ++i)
-	{
-	threads.push_back(new thread(MultiTread));
-	}
-	//this_thread::sleep_for(std::chrono::seconds(7));
-	/*for (vector<long double>::iterator it = output_numbers.begin();
-	it != output_numbers.end(); ++it)
-	{
-		cout << *it << endl;
-	}*/
-	for (size_t i = 0; i < coreCount; ++i)
-	{
-		threads[i]->join();
-	}
-	high_resolution_clock::time_point t2 = high_resolution_clock::now();
-	auto duration = duration_cast<seconds>(t2 - t1).count();
-	cout << "duration" << duration << endl;
-	//cin.get();
+	cout << "Multi Thread " << funcTime(MultiThreadFibonacce) << endl; 
+	cout<<"One Thread "<< funcTime(OneProcessFibonacce,30, 40)<<endl;
+	cin.get();
 	return 0;
 }
 
@@ -55,10 +42,10 @@ long double fibb(int n)
 	if (n < 3) return 1;
 	return fibb(n - 1) + fibb(n - 2);
 }
-T NextTask()
+NextValue NextTask()
 {
-	globalMutex1.lock();
-	T t;
+	lock_guard<std::mutex> lck(globalMutex1); 
+	NextValue t;
 	if (CurrentTask>=input_numbers.size())
 	{
 		t.IndexOfTask = -1;
@@ -68,27 +55,57 @@ T NextTask()
 	t.input = nextInput;
 	t.IndexOfTask = CurrentTask;
 	CurrentTask++;
-	globalMutex1.unlock();
-
 	return t;
 }
 
-void WriteResult(T task)
+void WriteResult(NextValue task)
 {
-	globalMutex2.lock();
 	output_numbers[task.IndexOfTask] = task.output;
 	cout << task.output << endl;
-	globalMutex2.unlock();
 }
 
 void MultiTread()
 {
 	while (true)
 	{
-		T task = NextTask();
+		NextValue task = NextTask();
 		if (task.IndexOfTask == -1)
 			break;
 		task.output = fibb(task.input);
 		WriteResult(task);
+	}
+}
+
+void OneProcessFibonacce(unsigned int BeginValue, unsigned int EndValue)
+{
+	for (unsigned int i = BeginValue; i < EndValue; ++i)
+	{
+		long double x = fibb(i);
+		cout << x << endl;
+	}
+}
+
+void MultiThreadFibonacce()
+{
+	input_numbers.reserve(10);
+	for (int i = 0; i < 10; ++i)
+	{
+		input_numbers.push_back(i + 30);
+	}
+	output_numbers.resize(10);
+	size_t coreCount = thread::hardware_concurrency();
+	std::vector<thread*> threads;
+	for (size_t i = 0; i < coreCount; ++i)
+	{
+		threads.push_back(new thread(MultiTread));
+	}
+	for (size_t i = 0; i < coreCount; ++i)
+	{
+		threads[i]->join();
+	}
+	for (vector<long double>::iterator it = output_numbers.begin();
+	it != output_numbers.end(); ++it)
+	{
+		cout << *it << endl;
 	}
 }
